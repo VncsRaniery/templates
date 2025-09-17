@@ -2,6 +2,10 @@
 node_modules/
 **/node_modules/
 
+# Excluir especificamente node_modules dos templates e website
+templates/*/node_modules/
+website/node_modules/
+
 # Excluir arquivos de build
 .next/
 dist/
@@ -56,6 +60,19 @@ templates/*/next.config.*
 templates/*/postcss.config.*
 templates/*/tailwind.config.*
 templates/*/eslint.config.*
+
+# Excluir arquivos de build dos templates
+templates/*/.next/
+templates/*/dist/
+templates/*/build/
+templates/*/out/
+templates/*/coverage/
+
+# Excluir arquivos de desenvolvimento dos templates
+templates/*/.env*
+templates/*/*.log
+templates/*/.DS_Store
+templates/*/Thumbs.db
 
 # Excluir arquivos de editor
 .vscode/

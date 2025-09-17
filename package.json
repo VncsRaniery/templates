@@ -1,6 +1,6 @@
 {
   "name": "templates-vncsraniery",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Ferramenta para inicializar projetos Next.js com templates personalizados do VncsRaniery. Suporte a comandos diretos (add, list, help), múltiplos templates, instalação otimizada e download direto na pasta atual.",
   "main": "index.js",
   "author": "VncsRaniery",
