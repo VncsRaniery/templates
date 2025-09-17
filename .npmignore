@@ -1,0 +1,69 @@
+# Excluir node_modules completamente
+node_modules/
+**/node_modules/
+
+# Excluir arquivos de build
+.next/
+dist/
+build/
+out/
+coverage/
+
+# Excluir arquivos de desenvolvimento
+.env*
+*.log
+.DS_Store
+Thumbs.db
+
+# Excluir arquivos de teste
+**/*.test.*
+**/*.spec.*
+**/__tests__/
+
+# Excluir arquivos de configuração
+.eslintrc*
+.prettierrc*
+.editorconfig
+.gitignore
+.gitattributes
+
+# Excluir CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Excluir documentação desnecessária
+**/README.md
+!README.md
+**/CHANGELOG.md
+**/LICENSE*
+
+# Excluir arquivos de lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Excluir workspace
+website/
+
+# Excluir arquivos de configuração dos templates
+templates/*/package-lock.json
+templates/*/yarn.lock
+templates/*/pnpm-lock.yaml
+templates/*/tsconfig.json
+templates/*/next.config.*
+templates/*/postcss.config.*
+templates/*/tailwind.config.*
+templates/*/eslint.config.*
+
+# Excluir arquivos de editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Excluir temporários
+.temp-*
+.tmp/
+temp/
