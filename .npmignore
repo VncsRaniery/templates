@@ -2,14 +2,12 @@
 node_modules/
 **/node_modules/
 
-# Excluir arquivos de build
+# Excluir arquivos de build e desenvolvimento
 .next/
 dist/
 build/
 out/
 coverage/
-
-# Excluir arquivos de desenvolvimento
 .env*
 *.log
 .DS_Store
@@ -20,22 +18,20 @@ Thumbs.db
 **/*.spec.*
 **/__tests__/
 
-# Excluir arquivos de configuração
+# Excluir arquivos de configuração de desenvolvimento
 .eslintrc*
 .prettierrc*
 .editorconfig
 .gitignore
 .gitattributes
 
-# Excluir CI/CD
+# Excluir CI/CD e GitHub Actions
 .github/
 .gitlab-ci.yml
 .travis.yml
 .circleci/
 
-# Excluir documentação desnecessária
-**/README.md
-!README.md
+# Excluir documentação desnecessária (manter READMEs dos templates)
 **/CHANGELOG.md
 **/LICENSE*
 
@@ -43,11 +39,14 @@ Thumbs.db
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+templates/*/package-lock.json
+templates/*/yarn.lock
+templates/*/pnpm-lock.yaml
 
-# Excluir workspace
+# Excluir workspace (não faz parte do package)
 website/
 
-# Excluir arquivos de configuração dos templates
+# Excluir arquivos de configuração dos templates (manter apenas o essencial)
 templates/*/package-lock.json
 templates/*/yarn.lock
 templates/*/pnpm-lock.yaml
@@ -67,3 +66,7 @@ templates/*/eslint.config.*
 .temp-*
 .tmp/
 temp/
+
+# Excluir arquivos de workspace
+*.tgz
+*.tar.gz

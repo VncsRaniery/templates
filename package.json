@@ -33,8 +33,17 @@
   ],
   "files": [
     "index.js",
-    "templates/",
-    "README.md"
+    "templates/**/*",
+    "!templates/**/package-lock.json",
+    "!templates/**/yarn.lock",
+    "!templates/**/pnpm-lock.yaml",
+    "!templates/**/tsconfig.json",
+    "!templates/**/next.config.*",
+    "!templates/**/postcss.config.*",
+    "!templates/**/tailwind.config.*",
+    "!templates/**/eslint.config.*",
+    "README.md",
+    "package.json"
   ],
   "dependencies": {
     "degit": "^2.8.4",
