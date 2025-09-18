@@ -20,18 +20,84 @@ const AVAILABLE_TEMPLATES = [
   },
 ];
 
-// Comandos disponíveis
-const AVAILABLE_COMMANDS = {
-  add: "Adiciona um template específico ao projeto",
-  list: "Lista todos os templates disponíveis",
-  help: "Mostra informações de ajuda e exemplos de uso"
-};
+// Arquivos que devem ser ignorados ao copiar o template
+const IGNORED_FILES = [
+  'index.js',
+  'README.md',
+  'package.json',
+  'package-lock.json',
+  '.gitignore',
+  'node_modules',
+  '.git',
+  '.github',
+  'templates',
+  'website'
+];
 
 // Função para detectar se está em uma pasta existente
 function isInExistingProject() {
   const currentDir = process.cwd();
   const packageJsonPath = path.join(currentDir, "package.json");
   return fs.existsSync(packageJsonPath);
+}
+
+// Função para parsear argumentos da linha de comando
+function parseArgs(args) {
+  const result = {
+    mode: 'interactive',
+    template: null,
+    destination: null,
+    usingCurrentDir: false
+  };
+
+  if (args.length === 0) {
+    return result;
+  }
+
+  const command = args[0].toLowerCase();
+  
+  // Comandos especiais
+  if (command === "help" || command === "--help" || command === "-h") {
+    result.mode = 'help';
+    return result;
+  }
+  
+  if (command === "list" || command === "--list" || command === "-l") {
+    result.mode = 'list';
+    return result;
+  }
+  
+  if (command === "add") {
+    if (args.length < 2) {
+      result.mode = 'error';
+      result.error = "Template não especificado.";
+      result.suggestion = "Use: npx create-template-vncsraniery@latest add <template> [destino]";
+      return result;
+    }
+    
+    result.mode = 'install';
+    result.template = args[1];
+    result.destination = args[2] || "";
+    
+    // Verifica se o destino é './'
+    if (result.destination === "./" || result.destination === ".\\") {
+      result.usingCurrentDir = true;
+    }
+    
+    return result;
+  }
+
+  // Modo legado (template como primeiro argumento)
+  result.mode = 'install';
+  result.template = args[0];
+  result.destination = args[1] || "";
+  
+  // Verifica se o destino é './'
+  if (result.destination === "./" || result.destination === ".\\") {
+    result.usingCurrentDir = true;
+  }
+  
+  return result;
 }
 
 // Função para listar templates disponíveis
@@ -79,24 +145,70 @@ function showHelp() {
   });
 }
 
-// Função para copiar arquivos recursivamente
-function copyRecursive(src, dest) {
+// Função para verificar se um arquivo deve ser ignorado
+function shouldIgnoreFile(fileName) {
+  return IGNORED_FILES.includes(fileName) || 
+         fileName.startsWith('.') && !fileName.startsWith('.next') ||
+         fileName === 'next.config.js' ||
+         fileName === 'next.config.ts' ||
+         fileName === 'tsconfig.json' ||
+         fileName === 'eslint.config.mjs' ||
+         fileName === 'postcss.config.mjs';
+}
+
+// Função para copiar arquivos recursivamente (apenas arquivos do template)
+function copyRecursive(src, dest, options = {}) {
+  const { overwrite = false, verbose = false } = options;
   const stats = fs.statSync(src);
+  
   if (stats.isDirectory()) {
     if (!fs.existsSync(dest)) {
       fs.mkdirSync(dest, { recursive: true });
+      if (verbose) {
+        console.log(chalk.gray(`📁 Criando diretório: ${path.basename(dest)}`));
+      }
     }
     const files = fs.readdirSync(src);
     files.forEach((file) => {
-      copyRecursive(path.join(src, file), path.join(dest, file));
+      // Verificar se o arquivo deve ser ignorado
+      if (!shouldIgnoreFile(file)) {
+        copyRecursive(path.join(src, file), path.join(dest, file), options);
+      }
     });
   } else {
-    fs.copyFileSync(src, dest);
+    // Verificar se o arquivo deve ser ignorado
+    if (!shouldIgnoreFile(path.basename(src))) {
+      // Verificar se o arquivo de destino já existe
+      if (fs.existsSync(dest)) {
+        if (!overwrite) {
+          console.log(chalk.yellow(`⚠️  Arquivo já existe: ${path.basename(dest)}`));
+          console.log(chalk.gray(`   Caminho: ${dest}`));
+          console.log(chalk.gray(`   Use --force para sobrescrever arquivos existentes`));
+          return;
+        } else {
+          console.log(chalk.yellow(`🔄 Sobrescrevendo: ${path.basename(dest)}`));
+        }
+      } else if (verbose) {
+        console.log(chalk.gray(`📄 Copiando: ${path.basename(dest)}`));
+      }
+      fs.copyFileSync(src, dest);
+    }
   }
 }
 
-// Função para baixar template para pasta existente
-async function downloadToExistingProject(selectedTemplate, targetPath) {
+// Função unificada para instalar template
+async function installTemplate(templateValue, destination, options = {}) {
+  const { overwrite = false, verbose = false } = options;
+  
+  // Encontrar o template
+  const selectedTemplate = AVAILABLE_TEMPLATES.find(
+    (t) => t.value === templateValue
+  );
+  
+  if (!selectedTemplate) {
+    throw new Error(`Template "${templateValue}" não encontrado.`);
+  }
+
   const tempDir = path.join(process.cwd(), ".temp-template-download");
   const templateSourceDir = path.join(
     tempDir,
@@ -107,7 +219,7 @@ async function downloadToExistingProject(selectedTemplate, targetPath) {
   try {
     console.log(
       chalk.yellow(
-        `\n📦 Baixando template "${selectedTemplate.title}" para a pasta atual...`
+        `\n📦 Baixando template "${selectedTemplate.title}"...`
       )
     );
 
@@ -127,17 +239,27 @@ async function downloadToExistingProject(selectedTemplate, targetPath) {
 
     console.log(chalk.blue("📋 Copiando arquivos do template..."));
 
-    const files = fs.readdirSync(templateSourceDir);
-    files.forEach((file) => {
-      const srcPath = path.join(templateSourceDir, file);
-      const destPath = path.join(targetPath, file);
-      copyRecursive(srcPath, destPath);
-    });
+    // Verificar se o destino já existe (apenas para novos projetos)
+    if (destination && !isInExistingProject()) {
+      if (fs.existsSync(destination)) {
+        throw new Error(
+          `A pasta "${destination}" já existe. Por favor, remova-a ou escolha outro nome.`
+        );
+      }
+      fs.mkdirSync(destination, { recursive: true });
+    }
+
+    const targetPath = destination || process.cwd();
+
+    // Copiar apenas os arquivos do template (ignorando arquivos do projeto principal)
+    copyRecursive(templateSourceDir, targetPath, { overwrite, verbose });
 
     console.log(chalk.green("\n✅ Template instalado com sucesso!"));
     console.log(
       chalk.green(`📁 Arquivos copiados para: ${chalk.bold(targetPath)}`)
     );
+
+    return { template: selectedTemplate, targetPath };
   } finally {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -145,154 +267,114 @@ async function downloadToExistingProject(selectedTemplate, targetPath) {
   }
 }
 
-// Função para baixar template para nova pasta
-async function downloadToNewProject(projectName, selectedTemplate) {
-  const projectPath = path.join(process.cwd(), projectName);
-  const tempDir = path.join(process.cwd(), ".temp-template-download");
-  const templateSourceDir = path.join(
-    tempDir,
-    "templates",
-    selectedTemplate.folder
+// Função para exibir instruções finais
+function showFinalInstructions(projectPath, usingCurrentDir = false) {
+  console.log(
+    `\n${chalk.bold("🚀 Para começar, execute os seguintes comandos:")}`
   );
-
-  try {
-    console.log(
-      chalk.yellow(`\n📦 Baixando template "${selectedTemplate.title}"...`)
-    );
-
-    const emitter = degit(TEMPLATE_URL, {
-      cache: false,
-      force: true,
-      verbose: false,
-    });
-
-    await emitter.clone(tempDir);
-
-    if (!fs.existsSync(templateSourceDir)) {
-      throw new Error(
-        `Template "${selectedTemplate.folder}" não encontrado no repositório`
-      );
-    }
-
-    console.log(chalk.blue("📋 Copiando arquivos do template..."));
-
-    if (fs.existsSync(projectPath)) {
-      throw new Error(
-        `A pasta "${projectName}" já existe. Por favor, remova-a ou escolha outro nome.`
-      );
-    }
-
-    fs.mkdirSync(projectPath, { recursive: true });
-
-    const files = fs.readdirSync(templateSourceDir);
-    files.forEach((file) => {
-      const srcPath = path.join(templateSourceDir, file);
-      const destPath = path.join(projectPath, file);
-      copyRecursive(srcPath, destPath);
-    });
-
-    console.log(chalk.green("\n✅ Template baixado com sucesso!"));
-    console.log(
-      chalk.green(`📁 Projeto criado em: ${chalk.bold(projectPath)}`)
-    );
-  } finally {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
+  if (!usingCurrentDir && projectPath) {
+    console.log(`\n  ${chalk.cyan(`cd ${projectPath}`)}`);
   }
+  console.log(`\n  ${chalk.cyan("npm install")}`);
+  console.log(`  ${chalk.cyan("npx next dev")}\n`);
+  console.log(
+    chalk.gray(
+      "💡 Dica: Use npx para executar comandos sem instalar globalmente!"
+    )
+  );
+  console.log(chalk.gray("📚 Documentação: https://nextjs.org/docs\n"));
+}
+
+// Função para validar nome do projeto
+function validateProjectName(name) {
+  if (!name || name.trim().length === 0) {
+    return "Nome do projeto é obrigatório";
+  }
+  if (!/^[a-zA-Z0-9-_]+$/.test(name.trim())) {
+    return "Nome deve conter apenas letras, números, hífens e underscores";
+  }
+  return true;
+}
+
+// Função para tratar erros de forma padronizada
+function handleError(error, context = "") {
+  console.error(chalk.red(`❌ ${context}Ocorreu um erro:`));
+  console.error(chalk.red(error.message));
+  
+  if (error.message.includes("404")) {
+    console.log(
+      chalk.yellow(
+        "\n💡 Dica: O template selecionado pode não existir ainda."
+      )
+    );
+    console.log(
+      chalk.yellow(
+        "Tente usar o template principal ou verifique se o nome está correto."
+      )
+    );
+  }
+  
+  process.exit(1);
 }
 
 async function run() {
   // Obter os argumentos da linha de comando
   const args = process.argv.slice(2);
   
-  // Processar comandos especiais
-  if (args.length > 0) {
-    const command = args[0].toLowerCase();
-    
-    // Comando de ajuda
-    if (command === "help" || command === "--help" || command === "-h") {
-      showHelp();
-      return;
-    }
-    
-    // Comando para listar templates
-    if (command === "list" || command === "--list" || command === "-l") {
-      listTemplates();
-      return;
-    }
-    
-    // Comando add para adicionar template
-    if (command === "add") {
-      if (args.length < 2) {
-        console.log(chalk.red("❌ Erro: Template não especificado."));
-        console.log(chalk.yellow("💡 Use: npx create-template-vncsraniery@latest add <template> [destino]"));
+  // Parsear argumentos
+  const parsedArgs = parseArgs(args);
+  
+  try {
+    // Processar diferentes modos
+    switch (parsedArgs.mode) {
+      case 'help':
+        showHelp();
+        return;
+        
+      case 'list':
+        listTemplates();
+        return;
+        
+      case 'error':
+        console.error(chalk.red(`❌ Erro: ${parsedArgs.error}`));
+        console.log(chalk.yellow(`💡 ${parsedArgs.suggestion}`));
         console.log(chalk.gray("📋 Para ver templates disponíveis: npx create-template-vncsraniery@latest list"));
-        return;
-      }
-      
-      const templateValue = args[1];
-      const destination = args[2] || "";
-      let usingCurrentDir = false;
-      
-      // Verifica se o destino é './'
-      if (destination === "./" || destination === ".\\") {
-        usingCurrentDir = true;
-      }
-      
-      // Encontrar o template
-      const selectedTemplate = AVAILABLE_TEMPLATES.find(
-        (t) => t.value === templateValue
-      );
-      
-      if (!selectedTemplate) {
-        console.log(chalk.red(`❌ Template "${templateValue}" não encontrado.`));
-        console.log(chalk.yellow("💡 Use: npx create-template-vncsraniery@latest list para ver templates disponíveis"));
-        return;
-      }
-      
-      // Executar download do template
-      try {
-        if (usingCurrentDir || isInExistingProject()) {
-          const targetPath = process.cwd();
-          console.log(
-            chalk.yellow(
-              `📁 Modo: Baixando template "${selectedTemplate.value}" na pasta atual (./)`
-            )
-          );
-          await downloadToExistingProject(selectedTemplate, targetPath);
-        } else {
-          if (!destination) {
-            console.log(chalk.red("❌ Erro: Destino não especificado."));
-            console.log(chalk.yellow("💡 Use: npx create-template-vncsraniery@latest add <template> <destino>"));
-            console.log(chalk.gray("📁 Para pasta atual: npx create-template-vncsraniery@latest add <template> ./"));
-            return;
-          }
-          await downloadToNewProject(destination, selectedTemplate);
+        process.exit(1);
+        
+      case 'install':
+        // Verificar se está em projeto existente ou usando pasta atual
+        const usingCurrentDir = parsedArgs.usingCurrentDir || isInExistingProject();
+        const destination = usingCurrentDir ? null : parsedArgs.destination;
+        
+        if (!destination && !usingCurrentDir) {
+          console.error(chalk.red("❌ Erro: Destino não especificado."));
+          console.log(chalk.yellow("💡 Use: npx create-template-vncsraniery@latest add <template> <destino>"));
+          console.log(chalk.gray("📁 Para pasta atual: npx create-template-vncsraniery@latest add <template> ./"));
+          process.exit(1);
         }
         
-        // Exibir instruções finais
         console.log(
-          `\n${chalk.bold("🚀 Para começar, execute os seguintes comandos:")}`
-        );
-        if (!usingCurrentDir && destination) {
-          console.log(`\n  ${chalk.cyan(`cd ${destination}`)}`);
-        }
-        console.log(`\n  ${chalk.cyan("npm install")}`);
-        console.log(`  ${chalk.cyan("npx next dev")}\n`);
-        console.log(
-          chalk.gray(
-            "💡 Dica: Use npx para executar comandos sem instalar globalmente!"
+          chalk.yellow(
+            `📁 Modo: Baixando template "${parsedArgs.template}" ${
+              usingCurrentDir ? "na pasta atual (./)" : `em "${destination}"`
+            }`
           )
         );
-        console.log(chalk.gray("📚 Documentação: https://nextjs.org/docs\n"));
+        
+        const result = await installTemplate(parsedArgs.template, destination);
+        showFinalInstructions(result.targetPath, usingCurrentDir);
         return;
-      } catch (err) {
-        console.error(chalk.red("❌ Ocorreu um erro ao baixar o template:"));
-        console.error(chalk.red(err.message));
-        return;
-      }
+        
+      case 'interactive':
+        // Continuar com o fluxo interativo original
+        break;
+        
+      default:
+        console.error(chalk.red("❌ Modo de operação inválido."));
+        process.exit(1);
     }
+  } catch (err) {
+    handleError(err, "Erro ao processar argumentos: ");
   }
 
   // Modo interativo (comportamento original)
@@ -310,197 +392,83 @@ async function run() {
     )
   );
 
-  let specificTemplateValue = null;
-  let projectName = "";
-  let usingCurrentDir = false;
+  try {
+    let projectPath = "";
+    let usingCurrentDir = false;
 
-  // Analisa os argumentos para encontrar o template e o nome do projeto/pasta (modo legado)
-  if (args.length > 0) {
-    specificTemplateValue = args[0];
-    if (args.length > 1) {
-      projectName = args[1];
-    }
-  }
-
-  // Verifica se o segundo argumento é './'
-  if (projectName === "./" || projectName === ".\\") {
-    usingCurrentDir = true;
-    projectName = ""; // Se estiver usando a pasta atual, o nome do projeto não é relevante
-  }
-
-  let selectedTemplate;
-
-  // Se um template for especificado, encontre-o nos templates disponíveis
-  if (specificTemplateValue) {
-    selectedTemplate = AVAILABLE_TEMPLATES.find(
-      (t) => t.value === specificTemplateValue
-    );
-    if (!selectedTemplate) {
+    // Verificar se está em projeto existente
+    if (isInExistingProject()) {
       console.log(
-        chalk.red(`❌ Template "${specificTemplateValue}" não encontrado.`)
+        chalk.yellow(
+          "📁 Detectado: Você está em uma pasta de projeto existente"
+        )
+      );
+      console.log(
+        chalk.gray(
+          "Os arquivos do template serão adicionados à pasta atual\n"
+        )
+      );
+      projectPath = process.cwd();
+      usingCurrentDir = true;
+    } else {
+      // Solicitar nome do projeto
+      const projectResponse = await prompts({
+        type: "text",
+        name: "projectName",
+        message: "Qual o nome do seu novo projeto?",
+        initial: "meu-novo-projeto",
+        validate: validateProjectName,
+      });
+
+      projectPath = projectResponse.projectName.trim();
+      if (!projectPath) {
+        console.log(
+          chalk.red(
+            "❌ Nome do projeto é obrigatório. Cancelando a operação."
+          )
+        );
+        process.exit(1);
+      }
+
+      // Verificar se a pasta já existe
+      const fullProjectPath = path.join(process.cwd(), projectPath);
+      if (fs.existsSync(fullProjectPath)) {
+        console.log(
+          chalk.red(
+            `❌ A pasta "${projectPath}" já existe no diretório atual.`
+          )
+        );
+        console.log(
+          chalk.yellow(
+            "Por favor, escolha um nome diferente ou remova a pasta existente."
+          )
+        );
+        process.exit(1);
+      }
+    }
+
+    // Selecionar template
+    const templateResponse = await prompts({
+      type: "select",
+      name: "template",
+      message: "Qual template você gostaria de usar?",
+      choices: AVAILABLE_TEMPLATES,
+      initial: 0,
+    });
+
+    if (!templateResponse.template) {
+      console.log(
+        chalk.red("❌ Template é obrigatório. Cancelando a operação.")
       );
       process.exit(1);
     }
-  }
 
-  // Fluxo de instalação
-  try {
-    if (selectedTemplate) {
-      // Fluxo para template especificado
-      if (usingCurrentDir || isInExistingProject()) {
-        const targetPath = process.cwd();
-        console.log(
-          chalk.yellow(
-            `📁 Modo: Baixando template "${selectedTemplate.value}" na pasta atual (./)`
-          )
-        );
-        await downloadToExistingProject(selectedTemplate, targetPath);
-      } else {
-        if (!projectName) {
-          const projectResponse = await prompts({
-            type: "text",
-            name: "projectName",
-            message: "Qual o nome do seu novo projeto?",
-            initial: "meu-novo-projeto",
-            validate: (value) => {
-              if (!value || value.trim().length === 0) {
-                return "Nome do projeto é obrigatório";
-              }
-              if (!/^[a-zA-Z0-9-_]+$/.test(value.trim())) {
-                return "Nome deve conter apenas letras, números, hífens e underscores";
-              }
-              return true;
-            },
-          });
-          projectName = projectResponse.projectName.trim();
-          if (!projectName) {
-            console.log(
-              chalk.red(
-                "❌ Nome do projeto é obrigatório. Cancelando a operação."
-              )
-            );
-            process.exit(1);
-          }
-        }
-        await downloadToNewProject(projectName, selectedTemplate);
-      }
-    } else {
-      // Fluxo interativo com prompts (como o original)
-      let currentProjectPath = "";
-      if (isInExistingProject()) {
-        console.log(
-          chalk.yellow(
-            "📁 Detectado: Você está em uma pasta de projeto existente"
-          )
-        );
-        console.log(
-          chalk.gray(
-            "Os arquivos do template serão adicionados à pasta atual\n"
-          )
-        );
-        currentProjectPath = process.cwd();
-      } else {
-        const projectResponse = await prompts({
-          type: "text",
-          name: "projectName",
-          message: "Qual o nome do seu novo projeto?",
-          initial: "meu-novo-projeto",
-          validate: (value) => {
-            if (!value || value.trim().length === 0) {
-              return "Nome do projeto é obrigatório";
-            }
-            if (!/^[a-zA-Z0-9-_]+$/.test(value.trim())) {
-              return "Nome deve conter apenas letras, números, hífens e underscores";
-            }
-            return true;
-          },
-        });
-
-        currentProjectPath = projectResponse.projectName.trim();
-        if (!currentProjectPath) {
-          console.log(
-            chalk.red(
-              "❌ Nome do projeto é obrigatório. Cancelando a operação."
-            )
-          );
-          return;
-        }
-
-        const projectPath = path.join(process.cwd(), currentProjectPath);
-        if (fs.existsSync(projectPath)) {
-          console.log(
-            chalk.red(
-              `❌ A pasta "${currentProjectPath}" já existe no diretório atual.`
-            )
-          );
-          console.log(
-            chalk.yellow(
-              "Por favor, escolha um nome diferente ou remova a pasta existente."
-            )
-          );
-          return;
-        }
-      }
-
-      const templateResponse = await prompts({
-        type: "select",
-        name: "template",
-        message: "Qual template você gostaria de usar?",
-        choices: AVAILABLE_TEMPLATES,
-        initial: 0,
-      });
-
-      if (!templateResponse.template) {
-        console.log(
-          chalk.red("❌ Template é obrigatório. Cancelando a operação.")
-        );
-        return;
-      }
-      selectedTemplate = AVAILABLE_TEMPLATES.find(
-        (t) => t.value === templateResponse.template
-      );
-
-      if (isInExistingProject()) {
-        await downloadToExistingProject(selectedTemplate, currentProjectPath);
-      } else {
-        await downloadToNewProject(currentProjectPath, selectedTemplate);
-      }
-    }
-
-    // Exibir instruções finais
-    const finalProjectPath = usingCurrentDir
-      ? process.cwd()
-      : path.join(process.cwd(), projectName);
-    console.log(
-      `\n${chalk.bold("🚀 Para começar, execute os seguintes comandos:")}`
-    );
-    if (!usingCurrentDir) {
-      console.log(`\n  ${chalk.cyan(`cd ${projectName}`)}`);
-    }
-    console.log(`\n  ${chalk.cyan("npm install")}`);
-    console.log(`  ${chalk.cyan("npx next dev")}\n`);
-    console.log(
-      chalk.gray(
-        "💡 Dica: Use npx para executar comandos sem instalar globalmente!"
-      )
-    );
-    console.log(chalk.gray("📚 Documentação: https://nextjs.org/docs\n"));
+    // Instalar template
+    const result = await installTemplate(templateResponse.template, projectPath);
+    showFinalInstructions(result.targetPath, usingCurrentDir);
+    
   } catch (err) {
-    console.error(chalk.red("❌ Ocorreu um erro ao baixar o template:"));
-    console.error(chalk.red(err.message));
-
-    if (err.message.includes("404")) {
-      console.log(
-        chalk.yellow(
-          "\n💡 Dica: O template selecionado pode não existir ainda."
-        )
-      );
-      console.log(
-        chalk.yellow(
-          "Tente usar o template principal ou verifique se o nome está correto."
-        )
-      );
-    }
+    handleError(err, "Erro no modo interativo: ");
   }
 }
 
