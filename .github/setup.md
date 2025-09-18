@@ -44,8 +44,10 @@ Este token é automaticamente fornecido pelo GitHub e não precisa ser configura
 - Atualiza npm para a versão mais recente
 - Executa build e testes do package
 - Verifica se há mudanças nos arquivos do package (apenas para push em branch)
+- **Incrementa automaticamente a versão** (patch version)
+- **Cria tag Git** com a nova versão
 - Publica o package no NPM
-- Cria uma release no GitHub
+- **Cria release no GitHub** com informações detalhadas
 
 ## Estrutura do Workflow
 
@@ -66,6 +68,21 @@ jobs:
   publish-package:         # Job 2: Publish do package (push main ou tags v*)
 ```
 
+## Sistema de Versionamento Automático
+
+### Como Funciona
+1. **Detecção de Mudanças**: O workflow verifica se há mudanças nos arquivos do package
+2. **Bump de Versão**: Incrementa automaticamente a versão patch (1.1.0 → 1.1.1)
+3. **Tag Git**: Cria uma tag Git com a nova versão
+4. **Publicação NPM**: Publica o package com a nova versão
+5. **Release GitHub**: Cria uma release no GitHub com informações detalhadas
+
+### Benefícios
+- ✅ **Sem erros de versão duplicada** - Versão sempre incrementada
+- ✅ **Releases automáticas** - GitHub releases criadas automaticamente
+- ✅ **Tags organizadas** - Tags Git para cada versão
+- ✅ **Versionamento semântico** - Seguindo padrões do NPM
+
 ## Troubleshooting
 
 ### Erro de autenticação NPM
@@ -73,9 +90,13 @@ jobs:
 - Confirme se o token tem permissões de publicação
 - Verifique se o package name está disponível no NPM
 
+### Erro de versão duplicada
+- **Resolvido automaticamente** - O workflow agora incrementa a versão automaticamente
+- Não é mais necessário incrementar manualmente a versão
+
 ### Build falha
 - Verifique se todas as dependências estão no package.json
-- Confirme se o Node.js versão 18 está sendo usado
+- Confirme se o Node.js versão 20 está sendo usado
 - Verifique os logs de build para erros específicos
 
 ### Package não é publicado

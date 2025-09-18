@@ -10,7 +10,7 @@ on:
 
 permissions:
   id-token: write  # Required for OIDC
-  contents: read
+  contents: write  # Required for creating tags and releases
 
 jobs:
   build-website:
@@ -106,6 +106,30 @@ jobs:
             echo "Publishing due to tag or main branch push"
           fi
 
+      - name: Bump version and create tag
+        if: steps.check-changes.outputs.changes == 'true'
+        id: version
+        run: |
+          # Configurar Git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Obter versão atual
+          CURRENT_VERSION=$(npm pkg get version | tr -d '"')
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Incrementar versão patch
+          NEW_VERSION=$(npm version patch --no-git-tag-version)
+          echo "New version: $NEW_VERSION"
+          
+          # Criar tag Git
+          git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
+          git push origin "$NEW_VERSION"
+          
+          # Salvar versão para uso posterior
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_VERSION" >> $GITHUB_OUTPUT
+
       - name: Publish to NPM
         if: steps.check-changes.outputs.changes == 'true'
         run: npm publish
@@ -118,13 +142,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: Release ${{ steps.version.outputs.version }}
           body: |
-            Automated release from GitHub Actions
+            🚀 **Release ${{ steps.version.outputs.version }}**
             
-            Changes in this release:
+            ## 📦 Package Published
+            - **NPM**: [create-templates-vncsraniery@${{ steps.version.outputs.version }}](https://www.npmjs.com/package/create-templates-vncsraniery)
+            
+            ## 🔄 Changes
             - Website build updated
             - Package published to NPM
+            - Version automatically bumped
+            
+            ## 📋 Usage
+            ```bash
+            npx create-templates-vncsraniery@${{ steps.version.outputs.version }} add landing-01
+            ```
+            
+            ---
+            *This release was created automatically by GitHub Actions*
           draft: false
           prerelease: false
